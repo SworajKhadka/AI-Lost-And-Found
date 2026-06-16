@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+/* ── Custom animations ─────────────────────────────────────────────── */
+
+@theme {
+  --animate-fade-up:  fade-up  0.45s ease-out both;
+  --animate-scale-in: scale-in 0.2s  ease-out both;
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1);    }
+}
+
+/* ── Stagger helpers (used by ItemList cards) ──────────────────────── */
+/* Set as plain CSS so Tailwind content-scanning is never an issue.    */
+.stagger-0 { animation-delay:   0ms; }
+.stagger-1 { animation-delay:  50ms; }
+.stagger-2 { animation-delay: 100ms; }
+.stagger-3 { animation-delay: 150ms; }
+.stagger-4 { animation-delay: 200ms; }
+.stagger-5 { animation-delay: 250ms; }
+.stagger-6 { animation-delay: 300ms; }
+.stagger-7 { animation-delay: 350ms; }
+.stagger-8 { animation-delay: 400ms; }
+.stagger-9 { animation-delay: 450ms; }
+
+/* ── Base reset ────────────────────────────────────────────────────── */
+body { margin: 0; }
