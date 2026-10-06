@@ -1,4 +1,5 @@
 import secrets
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pymongo.collection import Collection
@@ -52,6 +53,7 @@ def create_item(item: ItemCreate, items: Collection = Depends(get_items_collecti
         # Lets scripts/retag_items.py find items whose AI tagging failed
         "ai_status":   "ok" if metadata else "pending",
         "owner_token": owner_token,   # stored in DB, never exposed in GET responses
+        "created_at":  datetime.now(timezone.utc),
     }
 
     result  = items.insert_one(doc)
@@ -72,7 +74,9 @@ def delete_item(
         raise HTTPException(status_code=404, detail="Item not found")
 
     # Reject the request if no token was supplied or if it doesn't match
-    if not x_owner_token or x_owner_token != item.get("owner_token"):
+    # compare_digest avoids leaking token contents through response timing
+    stored_token = item.get("owner_token") or ""
+    if not x_owner_token or not secrets.compare_digest(x_owner_token, stored_token):
         raise HTTPException(
             status_code=403,
             detail="Forbidden: invalid or missing owner token.",
