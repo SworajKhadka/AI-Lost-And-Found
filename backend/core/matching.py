@@ -21,7 +21,7 @@ GENERIC_CATEGORIES = {"other", "uncategorized", ""}
 def cosine_similarity(a: list[float], b: list[float]) -> float:
     if not a or not b or len(a) != len(b):
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
     norm = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
     return dot / norm if norm else 0.0
 
@@ -64,7 +64,8 @@ def score_pair(source: dict, candidate: dict) -> tuple[int, list[str]]:
 
     # Legacy scoring for items without embeddings
     score = 0
-    if (source.get("category") or "") not in {"", "uncategorized"} and source.get("category") == candidate.get("category"):
+    category = source.get("category") or ""
+    if category not in {"", "uncategorized"} and category == candidate.get("category"):
         score += 40
         reasons.append(f"Same category: {source['category']}")
     if keywords:

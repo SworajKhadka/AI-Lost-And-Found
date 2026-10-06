@@ -1,7 +1,7 @@
 """Request / response models shared by the API routes."""
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -19,7 +19,7 @@ class ItemCreate(BaseModel):
     status: ItemStatus
     location: str = Field(min_length=2, max_length=120)
     contact: str = Field(min_length=3, max_length=120)
-    image_url: Optional[str] = Field(default=None, max_length=500)
+    image_url: str | None = Field(default=None, max_length=500)
 
 
 class ItemResponse(BaseModel):
@@ -32,10 +32,10 @@ class ItemResponse(BaseModel):
     status: str
     location: str
     contact: str
-    image_url: Optional[str] = None
+    image_url: str | None = None
     category: str = "uncategorized"
     keywords: list[str] = []
-    created_at: Optional[datetime] = None
+    created_at: datetime | None = None
 
 
 class ItemCreateResponse(ItemResponse):

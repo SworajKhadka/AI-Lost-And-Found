@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pymongo.collection import Collection
-from typing import Optional
 
 from core.ai import FALLBACK_CATEGORY, embed_text, extract_item_metadata, item_embedding_text
 from core.db import get_items_collection, parse_object_id
@@ -70,7 +69,7 @@ def create_item(item: ItemCreate, items: Collection = Depends(get_items_collecti
 def delete_item(
     item_id: str,
     # FastAPI maps the X-Owner-Token HTTP header to this parameter automatically
-    x_owner_token: Optional[str] = Header(None),
+    x_owner_token: str | None = Header(None),
     items: Collection = Depends(get_items_collection),
 ):
     oid = parse_object_id(item_id)
