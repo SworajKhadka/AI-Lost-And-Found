@@ -1,61 +1,14 @@
-import json
-import os
-import re
 import secrets
 
-import google.generativeai as genai
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pymongo.collection import Collection
 from typing import Optional
 
+from core.ai import FALLBACK_CATEGORY, extract_item_metadata
 from core.db import get_items_collection, parse_object_id
 from core.schemas import ItemCreate, ItemCreateResponse, ItemResponse
 
 router = APIRouter()
-
-
-# --- Gemini metadata extraction ---
-
-def extract_item_metadata(description: str) -> dict:
-    """
-    Calls Gemini to classify the item and extract keywords from the description.
-    Returns {"category": str, "keywords": [str, ...]}.
-    Falls back to safe defaults if anything goes wrong.
-    """
-    fallback = {"category": "uncategorized", "keywords": []}
-
-    try:
-        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-        model = genai.GenerativeModel("gemini-2.5-flash")
-
-        prompt = (
-            "You are a classifier for a lost-and-found app.\n\n"
-            f'Item description: "{description}"\n\n'
-            "Return a JSON object with exactly two keys:\n"
-            '  "category": one of [earbuds, wallet, ID card, charger, keys, bag, phone, laptop, other]\n'
-            '  "keywords": a list of 3 to 5 short keywords that best describe the item\n\n'
-            "Reply with ONLY the JSON object, no extra text."
-        )
-
-        response = model.generate_content(prompt)
-        raw = response.text.strip()
-
-        # Strip markdown code fences if Gemini wraps the JSON in ```json ... ```
-        raw = re.sub(r"^```(?:json)?\s*", "", raw)
-        raw = re.sub(r"\s*```$", "", raw)
-
-        parsed = json.loads(raw)
-
-        category = str(parsed.get("category", "uncategorized"))
-        keywords = parsed.get("keywords", [])
-        if not isinstance(keywords, list):
-            keywords = []
-
-        return {"category": category, "keywords": keywords}
-
-    except Exception as e:
-        print(f"Gemini error: {e}")
-        return fallback
 
 
 # --- Helper to convert MongoDB doc to dict ---
@@ -90,12 +43,14 @@ def create_item(item: ItemCreate, items: Collection = Depends(get_items_collecti
     # response so their browser can authenticate future delete requests.
     owner_token = secrets.token_hex(16)
 
-    metadata = extract_item_metadata(item.description)
+    metadata = extract_item_metadata(item.title, item.description)
 
     doc = {
         **item.model_dump(),
-        "category":    metadata["category"],
-        "keywords":    metadata["keywords"],
+        "category":    metadata["category"] if metadata else FALLBACK_CATEGORY,
+        "keywords":    metadata["keywords"] if metadata else [],
+        # Lets scripts/retag_items.py find items whose AI tagging failed
+        "ai_status":   "ok" if metadata else "pending",
         "owner_token": owner_token,   # stored in DB, never exposed in GET responses
     }
 
