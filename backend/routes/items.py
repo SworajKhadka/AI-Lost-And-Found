@@ -6,37 +6,12 @@ import secrets
 import google.generativeai as genai
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pymongo.collection import Collection
-from pydantic import BaseModel
 from typing import Optional
 
 from core.db import get_items_collection, parse_object_id
+from core.schemas import ItemCreate, ItemCreateResponse, ItemResponse
 
 router = APIRouter()
-
-
-# --- Request / Response models ---
-
-class Item(BaseModel):
-    title: str
-    description: str
-    # "lost" or "found" — whether the person lost or found this object
-    status: str
-    location: str
-    contact: str
-    image_url: Optional[str] = None
-
-
-class ItemResponse(Item):
-    id: str
-    category: str
-    keywords: list[str]
-    # owner_token is intentionally absent — callers never see other items' tokens
-
-
-class ItemCreateResponse(ItemResponse):
-    # Extends ItemResponse to include the token, but ONLY on the POST response.
-    # The creator receives it once so the frontend can store it for later deletes.
-    owner_token: str
 
 
 # --- Gemini metadata extraction ---
@@ -109,7 +84,7 @@ def get_item(item_id: str, items: Collection = Depends(get_items_collection)):
 
 
 @router.post("/", response_model=ItemCreateResponse, status_code=201)
-def create_item(item: Item, items: Collection = Depends(get_items_collection)):
+def create_item(item: ItemCreate, items: Collection = Depends(get_items_collection)):
 
     # Generate a secure random token — the creator receives this once in the
     # response so their browser can authenticate future delete requests.
