@@ -46,7 +46,7 @@ export default function MatchResults({ matches, onClose }) {
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
       {/* Glass panel */}
-      <div className="animate-scale-in bg-[#1a1714] border border-[#f97316]/20 rounded-2xl shadow-2xl shadow-black/60 w-full max-w-lg max-h-[80vh] flex flex-col">
+      <div role="dialog" aria-modal="true" aria-label="AI match results" className="animate-scale-in bg-[#1a1714] border border-[#f97316]/20 rounded-2xl shadow-2xl shadow-black/60 w-full max-w-lg max-h-[80vh] flex flex-col">
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#2e2822]">
@@ -84,6 +84,13 @@ export default function MatchResults({ matches, onClose }) {
                     </span>
                   </div>
                   <p className="text-[#9c9388] text-xs leading-relaxed">{m.description}</p>
+                  {m.reasons?.length > 0 && (
+                    <ul className="text-[11px] text-[#d4c5a8]/70 space-y-0.5 pt-0.5">
+                      {m.reasons.map((reason) => (
+                        <li key={reason}>• {reason}</li>
+                      ))}
+                    </ul>
+                  )}
                   <div className="flex flex-wrap gap-x-4 text-xs text-[#9c9388]/60 pt-0.5">
                     <span>📍 {m.location}</span>
                     <span>✉️ {m.contact}</span>

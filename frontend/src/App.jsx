@@ -2,26 +2,41 @@ import { useEffect, useState } from 'react'
 import api from './api/api'
 import ItemForm from './components/ItemForm'
 import ItemList from './components/ItemList'
+import { getErrorMessage } from './lib/errors'
 import { loadTokenMap, saveTokenMap } from './lib/ownerTokens'
 
 export default function App() {
   const [items,       setItems]       = useState([])
   const [loadingItems,setLoadingItems]= useState(true)
+  const [loadError,   setLoadError]   = useState('')
   const [tokenMap,    setTokenMap]    = useState(loadTokenMap)
 
+  // Bumped by the "Try again" button to re-run the load effect
+  const [reloadKey,   setReloadKey]   = useState(0)
+
   useEffect(() => {
+    let cancelled = false
     async function fetchItems() {
       try {
         const { data } = await api.get('/items/')
-        setItems(data.reverse())
+        if (cancelled) return
+        setItems([...data].reverse()) // API returns oldest first; show newest first
+        setLoadError('')
       } catch (err) {
-        console.error('Failed to load items:', err)
+        if (!cancelled) setLoadError(getErrorMessage(err, 'Could not load items.'))
       } finally {
-        setLoadingItems(false)
+        if (!cancelled) setLoadingItems(false)
       }
     }
     fetchItems()
-  }, [])
+    return () => { cancelled = true }
+  }, [reloadKey])
+
+  function handleRetry() {
+    setLoadingItems(true)
+    setLoadError('')
+    setReloadKey((k) => k + 1)
+  }
 
   function handleItemCreated(newItem) {
     const { owner_token, ...itemWithoutToken } = newItem
@@ -71,12 +86,24 @@ export default function App() {
           <p className="text-xs font-semibold text-[#9c9388]/50 uppercase tracking-widest mb-4">
             All Items ({items.length})
           </p>
+          {loadError ? (
+            <div role="alert" className="bg-[#1a1714] border border-rose-500/20 rounded-2xl p-6 text-center space-y-3">
+              <p className="text-rose-400 text-sm">{loadError}</p>
+              <button
+                onClick={handleRetry}
+                className="text-sm text-[#f97316] hover:text-[#ea580c] underline underline-offset-2"
+              >
+                Try again
+              </button>
+            </div>
+          ) : (
           <ItemList
             items={items}
             loading={loadingItems}
             tokenMap={tokenMap}
             onItemDeleted={handleItemDeleted}
           />
+          )}
         </section>
       </main>
     </div>

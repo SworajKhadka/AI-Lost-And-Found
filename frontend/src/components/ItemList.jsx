@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import api from '../api/api'
+import { getErrorMessage } from '../lib/errors'
 import MatchResults from './MatchResults'
 
 const STATUS_STYLES = {
@@ -15,38 +16,40 @@ export default function ItemList({ items, loading, tokenMap, onItemDeleted }) {
   const [matchData,    setMatchData]    = useState(null)
   const [matchLoading, setMatchLoading] = useState(null)
   const [deleteLoading,setDeleteLoading]= useState(null)
+  // Inline error shown under a specific card: { id, message }
+  const [cardError,    setCardError]    = useState(null)
 
   async function handleFindMatches(item) {
     setMatchLoading(item.id)
+    setCardError(null)
     try {
       const { data } = await api.post('/matches/', { item_id: item.id })
       setMatchData(data)
     } catch (err) {
-      console.error('Match request failed:', err)
-      alert('Could not fetch matches. Make sure the backend is running.')
+      setCardError({ id: item.id, message: getErrorMessage(err, 'Could not fetch matches.') })
     } finally {
       setMatchLoading(null)
     }
   }
 
   async function handleDelete(item) {
-    if (!window.confirm(`Delete "${item.title}"? This cannot be undone.`)) return
+    if (!window.confirm(`Mark "${item.title}" as resolved? It will be removed from the list.`)) return
 
     const token = tokenMap[item.id]
     if (!token) return
 
     setDeleteLoading(item.id)
+    setCardError(null)
     try {
       await api.delete(`/items/${item.id}`, {
         headers: { 'X-Owner-Token': token },
       })
       onItemDeleted(item.id)
     } catch (err) {
-      console.error('Delete failed:', err)
-      const msg = err.response?.status === 403
-        ? 'You do not have permission to delete this item.'
-        : 'Could not delete item. Make sure the backend is running.'
-      alert(msg)
+      const message = err.response?.status === 403
+        ? 'You do not have permission to resolve this item.'
+        : getErrorMessage(err, 'Could not resolve this item.')
+      setCardError({ id: item.id, message })
     } finally {
       setDeleteLoading(null)
     }
@@ -120,6 +123,10 @@ export default function ItemList({ items, loading, tokenMap, onItemDeleted }) {
                 <span>📍 {item.location}</span>
                 <span>✉️ {item.contact}</span>
               </div>
+
+              {cardError?.id === item.id && (
+                <p role="alert" className="text-rose-400 text-xs">{cardError.message}</p>
+              )}
 
               {/* Action buttons */}
               <div className="flex items-center gap-5 pt-0.5">
