@@ -5,19 +5,14 @@ import secrets
 
 import google.generativeai as genai
 from bson import ObjectId
-from fastapi import APIRouter, Header, HTTPException
-from pymongo import MongoClient
+from fastapi import APIRouter, Depends, Header, HTTPException
+from pymongo.collection import Collection
 from pydantic import BaseModel
 from typing import Optional
 
+from core.db import get_items_collection
+
 router = APIRouter()
-
-
-# --- Database connection ---
-
-def get_db():
-    client = MongoClient(os.getenv("MONGO_URI"))
-    return client["lost_and_found"]
 
 
 # --- Request / Response models ---
@@ -100,24 +95,21 @@ def item_to_dict(item) -> dict:
 # --- Routes ---
 
 @router.get("/", response_model=list[ItemResponse])
-def get_all_items():
-    db = get_db()
-    items = list(db["items"].find())
-    return [item_to_dict(item) for item in items]
+def get_all_items(items: Collection = Depends(get_items_collection)):
+    docs = list(items.find().sort("_id", 1))
+    return [item_to_dict(doc) for doc in docs]
 
 
 @router.get("/{item_id}", response_model=ItemResponse)
-def get_item(item_id: str):
-    db = get_db()
-    item = db["items"].find_one({"_id": ObjectId(item_id)})
+def get_item(item_id: str, items: Collection = Depends(get_items_collection)):
+    item = items.find_one({"_id": ObjectId(item_id)})
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     return item_to_dict(item)
 
 
 @router.post("/", response_model=ItemCreateResponse, status_code=201)
-def create_item(item: Item):
-    db = get_db()
+def create_item(item: Item, items: Collection = Depends(get_items_collection)):
 
     # Generate a secure random token — the creator receives this once in the
     # response so their browser can authenticate future delete requests.
@@ -132,8 +124,8 @@ def create_item(item: Item):
         "owner_token": owner_token,   # stored in DB, never exposed in GET responses
     }
 
-    result  = db["items"].insert_one(doc)
-    created = db["items"].find_one({"_id": result.inserted_id})
+    result  = items.insert_one(doc)
+    created = items.find_one({"_id": result.inserted_id})
     return item_to_dict(created)
 
 
@@ -142,10 +134,9 @@ def delete_item(
     item_id: str,
     # FastAPI maps the X-Owner-Token HTTP header to this parameter automatically
     x_owner_token: Optional[str] = Header(None),
+    items: Collection = Depends(get_items_collection),
 ):
-    db = get_db()
-
-    item = db["items"].find_one({"_id": ObjectId(item_id)})
+    item = items.find_one({"_id": ObjectId(item_id)})
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
 
@@ -156,5 +147,5 @@ def delete_item(
             detail="Forbidden: invalid or missing owner token.",
         )
 
-    db["items"].delete_one({"_id": ObjectId(item_id)})
+    items.delete_one({"_id": ObjectId(item_id)})
     return {"message": "Item deleted successfully"}

@@ -1,11 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
 
+import core.config  # noqa: F401  (loads .env before anything reads os.environ)
 from routes.items import router as items_router
 from routes.matches import router as matches_router
-
-load_dotenv()
 
 app = FastAPI(title="AI Lost and Found API")
 

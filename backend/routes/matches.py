@@ -1,18 +1,11 @@
-import os
-
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException
-from pymongo import MongoClient
+from fastapi import APIRouter, Depends, HTTPException
+from pymongo.collection import Collection
 from pydantic import BaseModel
 
+from core.db import get_items_collection
+
 router = APIRouter()
-
-
-# --- Database connection ---
-
-def get_db():
-    client = MongoClient(os.getenv("MONGO_URI"))
-    return client["lost_and_found"]
 
 
 # --- Request / Response models ---
@@ -58,12 +51,11 @@ def calculate_score(source_item: dict, candidate: dict) -> int:
 # --- Routes ---
 
 @router.post("/", response_model=list[MatchResult])
-def find_matches(request: MatchRequest):
-    db = get_db()
+def find_matches(request: MatchRequest, items: Collection = Depends(get_items_collection)):
 
     # Fetch the source item by ID
     try:
-        source_item = db["items"].find_one({"_id": ObjectId(request.item_id)})
+        source_item = items.find_one({"_id": ObjectId(request.item_id)})
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid item_id format")
 
@@ -84,7 +76,7 @@ def find_matches(request: MatchRequest):
 
     # Query MongoDB for candidates that share the category OR have keyword overlap.
     # We fetch a broad set here and do precise scoring in Python below.
-    candidates = list(db["items"].find({
+    candidates = list(items.find({
         "status": opposite_status,
         "_id": {"$ne": source_item["_id"]},     # exclude the source item itself
         "$or": [

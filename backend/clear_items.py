@@ -1,11 +1,4 @@
-import os
-from dotenv import load_dotenv
-from pymongo import MongoClient
+from core.db import get_items_collection
 
-load_dotenv()
-
-client = MongoClient(os.getenv("MONGO_URI"))
-db = client["lost_and_found"]
-
-result = db["items"].delete_many({})
+result = get_items_collection().delete_many({})
 print(f"Deleted {result.deleted_count} document(s) from the 'items' collection.")
