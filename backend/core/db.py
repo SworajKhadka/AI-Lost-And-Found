@@ -27,3 +27,16 @@ def get_client() -> MongoClient:
 def get_items_collection() -> Collection:
     """FastAPI dependency returning the `items` collection."""
     return get_client()[get_settings().db_name]["items"]
+
+
+def parse_object_id(value: str) -> ObjectId:
+    """Convert a path/body id to ObjectId, answering 404 for malformed ids.
+
+    `ObjectId("not-an-id")` raises InvalidId; left unhandled it became a
+    500 response without CORS headers, which browsers report as a network
+    error instead of a clean "not found".
+    """
+    try:
+        return ObjectId(value)
+    except (InvalidId, TypeError):
+        raise HTTPException(status_code=404, detail="Item not found")

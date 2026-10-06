@@ -4,13 +4,12 @@ import re
 import secrets
 
 import google.generativeai as genai
-from bson import ObjectId
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pymongo.collection import Collection
 from pydantic import BaseModel
 from typing import Optional
 
-from core.db import get_items_collection
+from core.db import get_items_collection, parse_object_id
 
 router = APIRouter()
 
@@ -102,7 +101,8 @@ def get_all_items(items: Collection = Depends(get_items_collection)):
 
 @router.get("/{item_id}", response_model=ItemResponse)
 def get_item(item_id: str, items: Collection = Depends(get_items_collection)):
-    item = items.find_one({"_id": ObjectId(item_id)})
+    oid = parse_object_id(item_id)
+    item = items.find_one({"_id": oid})
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     return item_to_dict(item)
@@ -136,7 +136,8 @@ def delete_item(
     x_owner_token: Optional[str] = Header(None),
     items: Collection = Depends(get_items_collection),
 ):
-    item = items.find_one({"_id": ObjectId(item_id)})
+    oid = parse_object_id(item_id)
+    item = items.find_one({"_id": oid})
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
 
@@ -147,5 +148,5 @@ def delete_item(
             detail="Forbidden: invalid or missing owner token.",
         )
 
-    items.delete_one({"_id": ObjectId(item_id)})
+    items.delete_one({"_id": oid})
     return {"message": "Item deleted successfully"}

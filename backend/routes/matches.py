@@ -1,9 +1,8 @@
-from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 from pymongo.collection import Collection
 from pydantic import BaseModel
 
-from core.db import get_items_collection
+from core.db import get_items_collection, parse_object_id
 
 router = APIRouter()
 
@@ -54,10 +53,7 @@ def calculate_score(source_item: dict, candidate: dict) -> int:
 def find_matches(request: MatchRequest, items: Collection = Depends(get_items_collection)):
 
     # Fetch the source item by ID
-    try:
-        source_item = items.find_one({"_id": ObjectId(request.item_id)})
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid item_id format")
+    source_item = items.find_one({"_id": parse_object_id(request.item_id)})
 
     if not source_item:
         raise HTTPException(status_code=404, detail="Item not found")
