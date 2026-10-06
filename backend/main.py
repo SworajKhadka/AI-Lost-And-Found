@@ -1,18 +1,23 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-import core.config  # noqa: F401  (loads .env before anything reads os.environ)
+from core.config import FRONTEND_ORIGIN_REGEX, get_settings
 from routes.items import router as items_router
 from routes.matches import router as matches_router
 
+settings = get_settings()
+
 app = FastAPI(title="AI Lost and Found API")
 
+# Only the deployed frontend (plus its Vercel previews) and local dev may
+# call the API from a browser. Extra origins can be added with ALLOWED_ORIGINS.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.allowed_origins,
+    allow_origin_regex=FRONTEND_ORIGIN_REGEX,
     allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Content-Type", "X-Owner-Token"],
 )
 
 app.include_router(items_router, prefix="/items", tags=["items"])
