@@ -1,16 +1,20 @@
 from fastapi import APIRouter, Depends, HTTPException
-from pymongo.collection import Collection
 from pydantic import BaseModel
+from pymongo.collection import Collection
 
 from core.db import get_items_collection, parse_object_id
+from core.matching import score_pair
 
 router = APIRouter()
 
+# Upper bound on candidates scored per request. Fine for a campus-sized
+# dataset; at larger scale this would move to MongoDB Atlas Vector Search.
+MAX_CANDIDATES = 500
+OPPOSITE_STATUS = {"lost": "found", "found": "lost"}
 
-# --- Request / Response models ---
 
 class MatchRequest(BaseModel):
-    item_id: str    # ID of the newly created item to find matches for
+    item_id: str    # ID of the item to find matches for
 
 
 class MatchResult(BaseModel):
@@ -20,77 +24,33 @@ class MatchResult(BaseModel):
     location: str
     contact: str
     match_score: int
+    reasons: list[str] = []
 
-
-# --- Scoring logic ---
-
-def calculate_score(source_item: dict, candidate: dict) -> int:
-    """
-    Scores how likely two items are the same object (0-100).
-
-    Scoring breakdown:
-      +40  if category matches exactly
-      +15  per overlapping keyword (up to 4 overlaps = +60 max)
-    """
-    score = 0
-
-    # Category match: both items were classified as the same type of object
-    if source_item.get("category") and source_item["category"] == candidate.get("category"):
-        score += 40
-
-    # Keyword overlap: compare the Gemini-extracted keyword lists
-    source_keywords = set(kw.lower() for kw in source_item.get("keywords", []))
-    candidate_keywords = set(kw.lower() for kw in candidate.get("keywords", []))
-    overlap_count = len(source_keywords & candidate_keywords)
-    score += min(overlap_count * 15, 60)   # cap keyword contribution at 60
-
-    return min(score, 100)
-
-
-# --- Routes ---
 
 @router.post("/", response_model=list[MatchResult])
 def find_matches(request: MatchRequest, items: Collection = Depends(get_items_collection)):
-
-    # Fetch the source item by ID
-    source_item = items.find_one({"_id": parse_object_id(request.item_id)})
-
+    source_item = items.find_one({"_id": parse_object_id(request.item_id)}, {"owner_token": 0})
     if not source_item:
         raise HTTPException(status_code=404, detail="Item not found")
 
-    # Determine which status to search for — opposite of the source item
-    source_status = source_item.get("status")
-    if source_status == "lost":
-        opposite_status = "found"
-    elif source_status == "found":
-        opposite_status = "lost"
-    else:
+    opposite_status = OPPOSITE_STATUS.get(source_item.get("status"))
+    if not opposite_status:
         raise HTTPException(status_code=400, detail="Item has an invalid status value")
 
-    source_category = source_item.get("category")
-    source_keywords = [kw.lower() for kw in source_item.get("keywords", [])]
+    candidates = (
+        items.find(
+            {"status": opposite_status, "_id": {"$ne": source_item["_id"]}},
+            {"owner_token": 0},
+        )
+        .sort("_id", -1)
+        .limit(MAX_CANDIDATES)
+    )
 
-    # Query MongoDB for candidates that share the category OR have keyword overlap.
-    # We fetch a broad set here and do precise scoring in Python below.
-    candidates = list(items.find({
-        "status": opposite_status,
-        "_id": {"$ne": source_item["_id"]},     # exclude the source item itself
-        "$or": [
-            {"category": source_category},      # exact category match
-            {"keywords": {"$in": source_keywords}},  # at least one keyword in common
-        ],
-    }))
-
-    # Score each candidate and keep only those with 2+ keyword overlaps
-    # OR a category match (i.e. a meaningful signal, not a single-keyword fluke)
     results = []
     for candidate in candidates:
-        score = calculate_score(source_item, candidate)
-
-        # Require at least a category match (+40) or 2 keyword overlaps (+30) to surface
-        if score < 30:
+        score, reasons = score_pair(source_item, candidate)
+        if score == 0:
             continue
-
         results.append(MatchResult(
             matched_item_id=str(candidate["_id"]),
             title=candidate["title"],
@@ -98,10 +58,9 @@ def find_matches(request: MatchRequest, items: Collection = Depends(get_items_co
             location=candidate["location"],
             contact=candidate["contact"],
             match_score=score,
+            reasons=reasons,
         ))
 
-    # Sort best matches first
+    # Best matches first; an empty list (200 OK) simply means no match yet
     results.sort(key=lambda r: r.match_score, reverse=True)
-
-    # Return empty list (200 OK) when nothing qualifies — not an error
     return results
