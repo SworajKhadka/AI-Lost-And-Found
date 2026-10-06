@@ -108,7 +108,9 @@ export default function ItemList({ items, loading, tokenMap, onItemDeleted }) {
                     {item.category}
                   </span>
                 )}
-                {(item.keywords ?? []).map((kw) => (
+                {(item.keywords ?? [])
+                  .filter((kw) => kw.toLowerCase() !== item.category?.toLowerCase())
+                  .map((kw) => (
                   <span
                     key={kw}
                     className="bg-[#d4c5a8]/10 text-[#d4c5a8] border border-[#d4c5a8]/15 text-xs px-2.5 py-0.5 rounded-full"
