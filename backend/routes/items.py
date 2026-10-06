@@ -1,92 +1,17 @@
-import json
-import os
-import re
 import secrets
+from datetime import datetime, timezone
 
-import google.generativeai as genai
-from bson import ObjectId
-from fastapi import APIRouter, Header, HTTPException
-from pymongo import MongoClient
-from pydantic import BaseModel
-from typing import Optional
+from fastapi import APIRouter, Depends, Header, HTTPException
+from pymongo.collection import Collection
+
+from core.ai import FALLBACK_CATEGORY, embed_text, extract_item_metadata, item_embedding_text
+from core.db import get_items_collection, parse_object_id
+from core.schemas import ItemCreate, ItemCreateResponse, ItemResponse
 
 router = APIRouter()
 
-
-# --- Database connection ---
-
-def get_db():
-    client = MongoClient(os.getenv("MONGO_URI"))
-    return client["lost_and_found"]
-
-
-# --- Request / Response models ---
-
-class Item(BaseModel):
-    title: str
-    description: str
-    # "lost" or "found" — whether the person lost or found this object
-    status: str
-    location: str
-    contact: str
-    image_url: Optional[str] = None
-
-
-class ItemResponse(Item):
-    id: str
-    category: str
-    keywords: list[str]
-    # owner_token is intentionally absent — callers never see other items' tokens
-
-
-class ItemCreateResponse(ItemResponse):
-    # Extends ItemResponse to include the token, but ONLY on the POST response.
-    # The creator receives it once so the frontend can store it for later deletes.
-    owner_token: str
-
-
-# --- Gemini metadata extraction ---
-
-def extract_item_metadata(description: str) -> dict:
-    """
-    Calls Gemini to classify the item and extract keywords from the description.
-    Returns {"category": str, "keywords": [str, ...]}.
-    Falls back to safe defaults if anything goes wrong.
-    """
-    fallback = {"category": "uncategorized", "keywords": []}
-
-    try:
-        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-        model = genai.GenerativeModel("gemini-2.5-flash")
-
-        prompt = (
-            "You are a classifier for a lost-and-found app.\n\n"
-            f'Item description: "{description}"\n\n'
-            "Return a JSON object with exactly two keys:\n"
-            '  "category": one of [earbuds, wallet, ID card, charger, keys, bag, phone, laptop, other]\n'
-            '  "keywords": a list of 3 to 5 short keywords that best describe the item\n\n'
-            "Reply with ONLY the JSON object, no extra text."
-        )
-
-        response = model.generate_content(prompt)
-        raw = response.text.strip()
-
-        # Strip markdown code fences if Gemini wraps the JSON in ```json ... ```
-        raw = re.sub(r"^```(?:json)?\s*", "", raw)
-        raw = re.sub(r"\s*```$", "", raw)
-
-        parsed = json.loads(raw)
-
-        category = str(parsed.get("category", "uncategorized"))
-        keywords = parsed.get("keywords", [])
-        if not isinstance(keywords, list):
-            keywords = []
-
-        return {"category": category, "keywords": keywords}
-
-    except Exception as e:
-        print(f"Gemini error: {e}")
-        return fallback
+# Internal fields that must never be loaded into API responses
+PRIVATE_FIELDS = {"owner_token": 0, "embedding": 0}
 
 
 # --- Helper to convert MongoDB doc to dict ---
@@ -100,40 +25,43 @@ def item_to_dict(item) -> dict:
 # --- Routes ---
 
 @router.get("/", response_model=list[ItemResponse])
-def get_all_items():
-    db = get_db()
-    items = list(db["items"].find())
-    return [item_to_dict(item) for item in items]
+def get_all_items(items: Collection = Depends(get_items_collection)):
+    docs = list(items.find({}, PRIVATE_FIELDS).sort("_id", 1))
+    return [item_to_dict(doc) for doc in docs]
 
 
 @router.get("/{item_id}", response_model=ItemResponse)
-def get_item(item_id: str):
-    db = get_db()
-    item = db["items"].find_one({"_id": ObjectId(item_id)})
+def get_item(item_id: str, items: Collection = Depends(get_items_collection)):
+    oid = parse_object_id(item_id)
+    item = items.find_one({"_id": oid}, PRIVATE_FIELDS)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     return item_to_dict(item)
 
 
 @router.post("/", response_model=ItemCreateResponse, status_code=201)
-def create_item(item: Item):
-    db = get_db()
+def create_item(item: ItemCreate, items: Collection = Depends(get_items_collection)):
 
     # Generate a secure random token — the creator receives this once in the
     # response so their browser can authenticate future delete requests.
     owner_token = secrets.token_hex(16)
 
-    metadata = extract_item_metadata(item.description)
+    metadata = extract_item_metadata(item.title, item.description)
 
     doc = {
         **item.model_dump(),
-        "category":    metadata["category"],
-        "keywords":    metadata["keywords"],
+        "category":    metadata["category"] if metadata else FALLBACK_CATEGORY,
+        "keywords":    metadata["keywords"] if metadata else [],
+        # Lets scripts/retag_items.py find items whose AI tagging failed
+        "ai_status":   "ok" if metadata else "pending",
         "owner_token": owner_token,   # stored in DB, never exposed in GET responses
+        "created_at":  datetime.now(timezone.utc),
     }
+    # Semantic vector used by /matches; None if Gemini is unavailable
+    doc["embedding"] = embed_text(item_embedding_text(doc))
 
-    result  = db["items"].insert_one(doc)
-    created = db["items"].find_one({"_id": result.inserted_id})
+    result = items.insert_one(doc)
+    created = items.find_one({"_id": result.inserted_id}, {"embedding": 0})
     return item_to_dict(created)
 
 
@@ -141,20 +69,22 @@ def create_item(item: Item):
 def delete_item(
     item_id: str,
     # FastAPI maps the X-Owner-Token HTTP header to this parameter automatically
-    x_owner_token: Optional[str] = Header(None),
+    x_owner_token: str | None = Header(None),
+    items: Collection = Depends(get_items_collection),
 ):
-    db = get_db()
-
-    item = db["items"].find_one({"_id": ObjectId(item_id)})
+    oid = parse_object_id(item_id)
+    item = items.find_one({"_id": oid})
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
 
     # Reject the request if no token was supplied or if it doesn't match
-    if not x_owner_token or x_owner_token != item.get("owner_token"):
+    # compare_digest avoids leaking token contents through response timing
+    stored_token = item.get("owner_token") or ""
+    if not x_owner_token or not secrets.compare_digest(x_owner_token, stored_token):
         raise HTTPException(
             status_code=403,
             detail="Forbidden: invalid or missing owner token.",
         )
 
-    db["items"].delete_one({"_id": ObjectId(item_id)})
+    items.delete_one({"_id": oid})
     return {"message": "Item deleted successfully"}

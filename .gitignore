@@ -1,15 +1,28 @@
 # Python
-backend/venv/
-backend/__pycache__/
 **/__pycache__/
-*.pyc
+*.py[cod]
+backend/venv/
+backend/.venv/
+.pytest_cache/
+.ruff_cache/
 
-# Secrets — never commit
-backend/.env
+# Environment / secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Platform-specific local config
+backend/.fastapicloud/
 
 # Frontend
 frontend/node_modules/
 frontend/dist/
 
-# macOS
+# Local editor / AI tool settings
+.swo/
+.claude/
+.vscode/
+.idea/
+
+# OS
 .DS_Store

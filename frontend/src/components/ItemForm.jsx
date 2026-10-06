@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import api from '../api/api'
+import { getErrorMessage } from '../lib/errors'
 
 const emptyForm = {
   title: '',
@@ -51,8 +52,8 @@ export default function ItemForm({ onItemCreated }) {
       setFieldErrors({})
       setSuccess(true)
       setTimeout(() => setSuccess(false), 3000)
-    } catch {
-      setSubmitError('Something went wrong. Please try again.')
+    } catch (err) {
+      setSubmitError(getErrorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -72,6 +73,7 @@ export default function ItemForm({ onItemCreated }) {
             key={s}
             type="button"
             onClick={() => setForm({ ...form, status: s })}
+            aria-pressed={form.status === s}
             className={`flex-1 py-1.5 rounded-full text-sm font-medium capitalize transition-all ${
               form.status === s
                 ? 'bg-gradient-to-r from-[#f97316] to-[#ea580c] text-[#0e0c0a] shadow-lg shadow-[#f97316]/20'
@@ -87,8 +89,10 @@ export default function ItemForm({ onItemCreated }) {
       <div className="space-y-1">
         <input
           name="title"
+          maxLength={100}
           value={form.title}
           onChange={handleChange}
+          aria-label="Title"
           placeholder="Title (e.g. Blue AirPods case)"
           className={fieldErrors.title ? INPUT_ERROR : INPUT_NORMAL}
         />
@@ -101,8 +105,10 @@ export default function ItemForm({ onItemCreated }) {
       <div className="space-y-1">
         <textarea
           name="description"
+          maxLength={1000}
           value={form.description}
           onChange={handleChange}
+          aria-label="Description"
           placeholder="Description — be specific, Gemini uses this to auto-tag the item"
           rows={3}
           className={`${fieldErrors.description ? INPUT_ERROR : INPUT_NORMAL} resize-none`}
@@ -116,8 +122,10 @@ export default function ItemForm({ onItemCreated }) {
       <div className="space-y-1">
         <input
           name="location"
+          maxLength={120}
           value={form.location}
           onChange={handleChange}
+          aria-label="Location"
           placeholder="Location (e.g. Library 2nd floor)"
           className={fieldErrors.location ? INPUT_ERROR : INPUT_NORMAL}
         />
@@ -130,8 +138,10 @@ export default function ItemForm({ onItemCreated }) {
       <div className="space-y-1">
         <input
           name="contact"
+          maxLength={120}
           value={form.contact}
           onChange={handleChange}
+          aria-label="Contact"
           placeholder="Contact (email or phone)"
           className={fieldErrors.contact ? INPUT_ERROR : INPUT_NORMAL}
         />
@@ -142,15 +152,15 @@ export default function ItemForm({ onItemCreated }) {
 
       {/* Backend error */}
       {submitError && (
-        <p className="text-rose-400 text-sm bg-rose-500/10 border border-rose-500/20 rounded-lg px-4 py-2">
+        <p role="alert" className="text-rose-400 text-sm bg-rose-500/10 border border-rose-500/20 rounded-lg px-4 py-2">
           {submitError}
         </p>
       )}
 
       {/* Success banner */}
       {success && (
-        <p className="text-emerald-400 text-sm bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-4 py-2">
-          Item reported successfully!
+        <p role="status" className="text-emerald-400 text-sm bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-4 py-2">
+          Item reported! Use “Find Matches” on it to see likely matches.
         </p>
       )}
 

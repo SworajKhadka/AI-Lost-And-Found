@@ -1,0 +1,8 @@
+# Kept out of pyproject.toml on purpose: FastAPI Cloud installs dependencies
+# from pyproject.toml when one exists, and this project uses requirements.txt.
+line-length = 120
+target-version = "py310"
+
+[lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["B008"]  # FastAPI's Depends()/Header() defaults are idiomatic
