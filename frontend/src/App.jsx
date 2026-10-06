@@ -2,16 +2,7 @@ import { useEffect, useState } from 'react'
 import api from './api/api'
 import ItemForm from './components/ItemForm'
 import ItemList from './components/ItemList'
-
-const TOKEN_STORAGE_KEY = 'laf_owner_tokens'
-
-function loadTokenMap() {
-  try { return JSON.parse(sessionStorage.getItem(TOKEN_STORAGE_KEY) || '{}') }
-  catch { return {} }
-}
-function saveTokenMap(map) {
-  sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(map))
-}
+import { loadTokenMap, saveTokenMap } from './lib/ownerTokens'
 
 export default function App() {
   const [items,       setItems]       = useState([])
@@ -44,6 +35,10 @@ export default function App() {
 
   function handleItemDeleted(deletedId) {
     setItems((prev) => prev.filter((item) => item.id !== deletedId))
+    const rest = { ...tokenMap }
+    delete rest[deletedId]
+    setTokenMap(rest)
+    saveTokenMap(rest)
   }
 
   return (
