@@ -5,11 +5,14 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pymongo.collection import Collection
 from typing import Optional
 
-from core.ai import FALLBACK_CATEGORY, extract_item_metadata
+from core.ai import FALLBACK_CATEGORY, embed_text, extract_item_metadata, item_embedding_text
 from core.db import get_items_collection, parse_object_id
 from core.schemas import ItemCreate, ItemCreateResponse, ItemResponse
 
 router = APIRouter()
+
+# Internal fields that must never be loaded into API responses
+PRIVATE_FIELDS = {"owner_token": 0, "embedding": 0}
 
 
 # --- Helper to convert MongoDB doc to dict ---
@@ -24,14 +27,14 @@ def item_to_dict(item) -> dict:
 
 @router.get("/", response_model=list[ItemResponse])
 def get_all_items(items: Collection = Depends(get_items_collection)):
-    docs = list(items.find().sort("_id", 1))
+    docs = list(items.find({}, PRIVATE_FIELDS).sort("_id", 1))
     return [item_to_dict(doc) for doc in docs]
 
 
 @router.get("/{item_id}", response_model=ItemResponse)
 def get_item(item_id: str, items: Collection = Depends(get_items_collection)):
     oid = parse_object_id(item_id)
-    item = items.find_one({"_id": oid})
+    item = items.find_one({"_id": oid}, PRIVATE_FIELDS)
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     return item_to_dict(item)
@@ -55,9 +58,11 @@ def create_item(item: ItemCreate, items: Collection = Depends(get_items_collecti
         "owner_token": owner_token,   # stored in DB, never exposed in GET responses
         "created_at":  datetime.now(timezone.utc),
     }
+    # Semantic vector used by /matches; None if Gemini is unavailable
+    doc["embedding"] = embed_text(item_embedding_text(doc))
 
-    result  = items.insert_one(doc)
-    created = items.find_one({"_id": result.inserted_id})
+    result = items.insert_one(doc)
+    created = items.find_one({"_id": result.inserted_id}, {"embedding": 0})
     return item_to_dict(created)
 
 

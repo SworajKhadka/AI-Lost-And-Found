@@ -108,3 +108,39 @@ def extract_item_metadata(title: str, description: str) -> dict | None:
     except Exception:
         logger.exception("Gemini classification failed")
         return None
+
+
+EMBEDDING_DIMENSIONS = 768
+
+
+def item_embedding_text(item: dict) -> str:
+    """The text that represents an item in vector space."""
+    parts = [item.get("title", ""), item.get("description", "")]
+    category = item.get("category")
+    if category and category != FALLBACK_CATEGORY:
+        parts.append(f"Category: {category}")
+    if item.get("keywords"):
+        parts.append("Keywords: " + ", ".join(item["keywords"]))
+    return ". ".join(p.strip() for p in parts if p and p.strip())
+
+
+def embed_text(text: str) -> list[float] | None:
+    """Return a semantic embedding for `text`, or None if Gemini fails.
+
+    Embeddings let matching understand that "AirPods" and "white earbuds"
+    describe the same thing even when no keyword is shared.
+    """
+    try:
+        result = get_client().models.embed_content(
+            model=get_settings().embedding_model,
+            contents=text,
+            config=types.EmbedContentConfig(
+                task_type="SEMANTIC_SIMILARITY",
+                output_dimensionality=EMBEDDING_DIMENSIONS,
+            ),
+        )
+        values = result.embeddings[0].values if result.embeddings else None
+        return list(values) if values else None
+    except Exception:
+        logger.exception("Gemini embedding failed")
+        return None
