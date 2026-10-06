@@ -35,11 +35,11 @@ When you click **Find Matches** on an item, the API compares it against every re
 
 | Signal | Points |
 |---|---|
-| Cosine similarity of the two embeddings, scaled from 0.55 → 0.90 | up to **70** |
+| Cosine similarity of the two embeddings, scaled from 0.82 → 0.95 | up to **70** |
 | Same specific category (not `other`) | **+20** |
 | Shared keywords, fuzzy (`iphone` ≈ `phone`) | **+5 each**, up to 10 |
 
-Results below 35 are dropped and the rest are sorted best first. Items created before embeddings were added fall back to the original category + keyword scoring, so old data keeps working. The scoring lives in [`backend/core/matching.py`](backend/core/matching.py) and is unit-tested.
+Results below 35 are dropped and the rest are sorted best first. The similarity range is calibrated on real Gemini embeddings: unrelated campus items still score around 0.77–0.83, while true pairs score above 0.9. Items created before embeddings were added fall back to the original category + keyword scoring, so old data keeps working. The scoring lives in [`backend/core/matching.py`](backend/core/matching.py) and is unit-tested.
 
 ## Architecture
 

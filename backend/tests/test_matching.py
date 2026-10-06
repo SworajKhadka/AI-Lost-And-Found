@@ -48,3 +48,24 @@ def test_legacy_uncategorized_items_do_not_match_on_category_alone():
     a = {"category": "uncategorized", "keywords": []}
     b = {"category": "uncategorized", "keywords": []}
     assert score_pair(a, b)[0] == 0
+
+
+def _vector_with_similarity(target: float) -> list[float]:
+    """A unit vector whose cosine similarity with [1, 0] is `target`."""
+    return [target, (1 - target**2) ** 0.5]
+
+
+@pytest.mark.parametrize(
+    ("similarity", "should_match"),
+    [
+        (0.93, True),   # same MacBook, owner vs finder (measured in production)
+        (0.83, False),  # headphones vs iPhone (measured)
+        (0.81, False),  # MacBook vs iPhone (measured)
+        (0.77, False),  # MacBook vs vague "item found" post (measured)
+    ],
+)
+def test_thresholds_match_real_gemini_similarity_levels(similarity, should_match):
+    source = {"embedding": [1.0, 0.0], "category": "other", "keywords": []}
+    candidate = {"embedding": _vector_with_similarity(similarity), "category": "phone", "keywords": []}
+    score, _ = score_pair(source, candidate)
+    assert (score > 0) is should_match

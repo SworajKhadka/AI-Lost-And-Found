@@ -11,8 +11,12 @@ category + keyword-overlap scoring so nothing breaks during migration.
 
 import math
 
-SIM_FLOOR = 0.55     # cosine similarity at or below this adds nothing
-SIM_CEIL = 0.90      # cosine similarity at or above this adds the full 70
+# Calibrated on real gemini-embedding-001 output from production data:
+# the same MacBook described by its owner and its finder scored 0.93, while
+# unrelated items (MacBook vs iPhone, headphones vs iPhone) still scored
+# 0.77-0.83. Similarity below ~0.82 is background noise for this model.
+SIM_FLOOR = 0.82     # cosine similarity at or below this adds nothing
+SIM_CEIL = 0.95      # cosine similarity at or above this adds the full 70
 MIN_SEMANTIC_SCORE = 35
 MIN_LEGACY_SCORE = 30
 GENERIC_CATEGORIES = {"other", "uncategorized", ""}
